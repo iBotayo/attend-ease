@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #FAF8F2;
+  --foreground: #1C2626;
+  --primary: #123C3A;
+  --secondary: #2C7770;
+  --mint: #D6F5E8;
+  --success: #23865B;
+  --warning: #A86412;
+  --danger: #B83B45;
+}
+
+body {
+  color: var(--foreground);
+  background-color: var(--background);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom accessible focus ring */
+*:focus-visible {
+  outline: 2px solid #2C7770;
+  outline-offset: 2px;
+}
+
+/* Scrollbar polish */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #c9c3b5;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a9a292;
+}
