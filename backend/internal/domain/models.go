@@ -1,7 +1,5 @@
 package domain
 
-import "time"
-
 // User Roles matching frontend UserRole
 type UserRole string
 
