@@ -139,7 +139,7 @@ go vet ./...
 ## 8. Connecting the Next.js Frontend
 
 To connect the Next.js web application to this Go backend:
-1. Edit `/home/gamp/projects/attend-ease/.env.local`:
+1. Create or edit `.env.local` in the project root (next to `package.json`):
    ```bash
    NEXT_PUBLIC_API_BASE_URL=http://localhost:8080/api/v1
    NEXT_PUBLIC_ENABLE_MOCK_API=false
