@@ -1,0 +1,493 @@
+openapi: 3.0.3
+info:
+  title: Attend Ease REST API
+  description: Production-oriented attendance management API featuring facial verification, geofencing, multi-tenant isolation, and offline synchronization.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local Development Server
+paths:
+  /auth/login:
+    post:
+      summary: Authenticate user with credentials
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier, password]
+              properties:
+                identifier:
+                  type: string
+                  example: ADM-001
+                password:
+                  type: string
+                  example: SecretP@ssword2026!
+                rememberMe:
+                  type: boolean
+                  example: false
+      responses:
+        '200':
+          description: Successful authentication session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSession'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /auth/logout:
+    post:
+      summary: Invalidate current user session
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Session terminated successfully
+
+  /auth/me:
+    get:
+      summary: Retrieve current authenticated user profile
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Active user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /organizations/register:
+    post:
+      summary: Register organization and provision initial administrator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterOrganizationDto'
+      responses:
+        '200':
+          description: Organization registration initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistrationResult'
+
+  /organizations/verify-email:
+    post:
+      summary: Verify organization email with server-issued single-use token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                email:
+                  type: string
+      responses:
+        '200':
+          description: Verification confirmed and tenant activated
+
+  /organizations/setup:
+    post:
+      summary: Complete organization setup wizard (facility, shift, rules)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetupOrganizationDto'
+      responses:
+        '200':
+          description: Organization setup finalized
+
+  /employees:
+    get:
+      summary: List employees within organization
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: departmentId
+          in: query
+          schema:
+            type: string
+        - name: facilityId
+          in: query
+          schema:
+            type: string
+        - name: role
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive, all]
+      responses:
+        '200':
+          description: List of employees
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+    post:
+      summary: Create new employee
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEmployeeInput'
+      responses:
+        '201':
+          description: Employee created
+
+  /facilities:
+    get:
+      summary: List facilities with presence policies
+      responses:
+        '200':
+          description: List of facilities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Facility'
+    post:
+      summary: Create new facility
+      security:
+        - BearerAuth: []
+      responses:
+        '201':
+          description: Facility created
+
+  /shifts:
+    get:
+      summary: List shift schedules
+      responses:
+        '200':
+          description: List of shifts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Shift'
+
+  /attendance/today:
+    get:
+      summary: Retrieve today's attendance state for employee
+      parameters:
+        - name: employeeId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Today summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodayAttendanceSummary'
+
+  /attendance/check-in:
+    post:
+      summary: Record employee check-in with geofence and biometric verification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitAttendanceRequest'
+      responses:
+        '200':
+          description: Check-in recorded
+
+  /attendance/check-out:
+    post:
+      summary: Record employee check-out
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitAttendanceRequest'
+      responses:
+        '200':
+          description: Check-out recorded
+
+  /attendance/{id}/correct:
+    post:
+      summary: Submit administrative attendance correction
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [correctedTime, reason]
+              properties:
+                correctedTime:
+                  type: string
+                reason:
+                  type: string
+                approvedBy:
+                  type: string
+                approvedByName:
+                  type: string
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: Correction applied
+
+  /sync/offline-batch:
+    post:
+      summary: Idempotent batch synchronization of offline buffered events
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [events]
+              properties:
+                events:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/OfflineEvent'
+      responses:
+        '200':
+          description: Batch synchronization result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncBatchResult'
+
+  /reports/summary:
+    get:
+      summary: Compute attendance statistics and records for date range
+      responses:
+        '200':
+          description: Summary report
+
+  /reports/export/csv:
+    get:
+      summary: Export attendance report as sanitized CSV
+      responses:
+        '200':
+          description: CSV file stream
+          content:
+            text/csv:
+              schema:
+                type: string
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    AuthSession:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        token:
+          type: string
+        expiresAt:
+          type: string
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        organizationId:
+          type: string
+        employeeId:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [employee, supervisor, facility_admin, system_admin, org_admin]
+        departmentId:
+          type: string
+        departmentName:
+          type: string
+        assignedFacilityId:
+          type: string
+        assignedFacilityName:
+          type: string
+        isActive:
+          type: boolean
+        biometricStatus:
+          type: string
+          enum: [enrolled, pending, failed, not_enrolled]
+        joinedDate:
+          type: string
+
+    Facility:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        code:
+          type: string
+        address:
+          type: string
+        coordinates:
+          type: object
+          properties:
+            latitude:
+              type: number
+            longitude:
+              type: number
+        geofenceRadiusMeters:
+          type: integer
+        status:
+          type: string
+
+    Shift:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        code:
+          type: string
+        startTime:
+          type: string
+        endTime:
+          type: string
+        gracePeriodMinutes:
+          type: integer
+        assignedDays:
+          type: array
+          items:
+            type: integer
+        isActive:
+          type: boolean
+
+    AttendanceRecord:
+      type: object
+      properties:
+        id:
+          type: string
+        employeeId:
+          type: string
+        employeeName:
+          type: string
+        date:
+          type: string
+        checkInTime:
+          type: string
+        checkOutTime:
+          type: string
+        status:
+          type: string
+          enum: [present, absent, late, pending, rejected, early_departure]
+        verificationMode:
+          type: string
+        syncStatus:
+          type: string
+          enum: [synced, pending, rejected, review_required]
+
+    TodayAttendanceSummary:
+      type: object
+      properties:
+        hasCheckedIn:
+          type: boolean
+        hasCheckedOut:
+          type: boolean
+        checkInTime:
+          type: string
+        checkOutTime:
+          type: string
+        status:
+          type: string
+        facilityName:
+          type: string
+        syncStatus:
+          type: string
+
+    OfflineEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        eventType:
+          type: string
+          enum: [check_in, check_out]
+        employeeId:
+          type: string
+        capturedAt:
+          type: string
+        status:
+          type: string
+
+    SyncBatchResult:
+      type: object
+      properties:
+        totalProcessed:
+          type: integer
+        successful:
+          type: integer
+        failed:
+          type: integer
+        reviewRequired:
+          type: integer
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/OfflineEvent'
+
+    ApiError:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+        timestamp:
+          type: string
