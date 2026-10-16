@@ -15,6 +15,8 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
   useEffect(() => {
     if (!isLoading && !user) {
       router.replace('/login');
+    } else if (!isLoading && user?.mustChangePassword) {
+      router.replace('/change-password');
     }
   }, [user, isLoading, router]);
 
@@ -26,7 +28,7 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
     );
   }
 
-  if (!user) {
+  if (!user || user.mustChangePassword) {
     return null;
   }
   return (

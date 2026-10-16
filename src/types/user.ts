@@ -20,6 +20,7 @@ export interface User {
   biometricStatus: BiometricEnrollmentStatus;
   enrolledAt?: string;
   joinedDate: string;
+  mustChangePassword?: boolean;
 }
 
 export interface Department {

@@ -26,6 +26,10 @@ import {
   Lock,
 } from 'lucide-react';
 
+// Placeholder coordinates (San Francisco) used only to pre-fill the form.
+const DEMO_LATITUDE = 37.7749;
+const DEMO_LONGITUDE = -122.4194;
+
 interface EmployeeDraft {
   name: string;
   email: string;
@@ -66,9 +70,9 @@ function SetupOrganizationContent() {
 
   // Step 2: Facility & Geofence
   const [facilityName, setFacilityName] = useState('Headquarters - Main Facility');
-  const [facilityAddress, setFacilityAddress] = useState('100 Innovation Blvd, Tech Hub');
-  const [latitude, setLatitude] = useState(37.7749);
-  const [longitude, setLongitude] = useState(-122.4194);
+  const [facilityAddress, setFacilityAddress] = useState(isMockMode ? '100 Innovation Blvd, Tech Hub' : '');
+  const [latitude, setLatitude] = useState(DEMO_LATITUDE);
+  const [longitude, setLongitude] = useState(DEMO_LONGITUDE);
   const [geofenceRadiusMeters, setGeofenceRadiusMeters] = useState(150);
 
   // Step 3: Attendance Rules
@@ -83,14 +87,19 @@ function SetupOrganizationContent() {
   const [shiftDays, setShiftDays] = useState<number[]>([1, 2, 3, 4, 5]);
 
   // Step 5: Initial Team Members
-  const [employees, setEmployees] = useState<EmployeeDraft[]>([
-    {
-      name: 'Operations Lead',
-      email: 'ops@company.internal',
-      role: 'supervisor',
-      departmentName: 'Operations',
-    },
-  ]);
+  // The sample team member is demo-only: in live mode it would become a real account.
+  const [employees, setEmployees] = useState<EmployeeDraft[]>(
+    isMockMode
+      ? [
+          {
+            name: 'Operations Lead',
+            email: 'ops@company.internal',
+            role: 'supervisor',
+            departmentName: 'Operations',
+          },
+        ]
+      : []
+  );
   const [newEmpName, setNewEmpName] = useState('');
   const [newEmpEmail, setNewEmpEmail] = useState('');
   const [newEmpRole, setNewEmpRole] = useState<'employee' | 'supervisor' | 'facility_admin'>('employee');
@@ -183,6 +192,10 @@ function SetupOrganizationContent() {
       }
       if (isNaN(longitude) || longitude < -180 || longitude > 180) {
         setError('Please enter a valid longitude (-180 to 180).');
+        return false;
+      }
+      if (!isMockMode && latitude === DEMO_LATITUDE && longitude === DEMO_LONGITUDE) {
+        setError("These are placeholder coordinates. Use location detection or enter your facility's real latitude and longitude.");
         return false;
       }
       if (geofenceRadiusMeters < 20 || geofenceRadiusMeters > 5000) {

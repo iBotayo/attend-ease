@@ -18,6 +18,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (!isLoading) {
       if (!user) {
         router.replace('/login');
+      } else if (user.mustChangePassword) {
+        router.replace('/change-password');
       } else if (user.role === 'employee') {
         router.replace('/employee/dashboard');
       }
@@ -32,7 +34,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     );
   }
 
-  if (!user || user.role === 'employee') {
+  if (!user || user.mustChangePassword || user.role === 'employee') {
     return null;
   }
 

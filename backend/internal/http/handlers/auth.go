@@ -54,7 +54,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	       u.password_hash, u.role, COALESCE(u.department_id, ''), COALESCE(d.name, 'General Staff'),
 	       COALESCE(u.assigned_facility_id, ''), COALESCE(f.name, 'Default Facility'),
 	       COALESCE(u.avatar_url, ''), COALESCE(u.phone, ''), u.is_active,
-	       u.biometric_status, u.enrolled_at, u.joined_date
+	       u.biometric_status, u.enrolled_at, u.joined_date, u.must_change_password
 	FROM users u
 	LEFT JOIN organizations o ON u.organization_id = o.id
 	LEFT JOIN departments d ON u.department_id = d.id
@@ -72,7 +72,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		&passwordHash, &u.Role, &u.DepartmentID, &u.DepartmentName,
 		&u.AssignedFacilityID, &u.AssignedFacilityName,
 		&u.AvatarURL, &u.Phone, &u.IsActive,
-		&u.BiometricStatus, &enrolledAt, &joinedDate,
+		&u.BiometricStatus, &enrolledAt, &joinedDate, &u.MustChangePassword,
 	)
 
 	if err != nil {
@@ -225,5 +225,124 @@ func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	responses.JSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"message": "If an account exists with this identifier, password recovery instructions have been dispatched.",
+	})
+}
+
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"currentPassword"`
+	NewPassword     string `json:"newPassword"`
+}
+
+// ChangePassword lets an authenticated user replace their password. It clears the
+// must_change_password flag and revokes every other session, keeping only the caller's.
+func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		responses.Unauthorized(w, "Authentication required.")
+		return
+	}
+
+	var req ChangePasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		responses.BadRequest(w, "Invalid JSON payload", nil)
+		return
+	}
+	if req.CurrentPassword == "" || req.NewPassword == "" {
+		responses.BadRequest(w, "Current password and new password are required.", nil)
+		return
+	}
+
+	var currentHash string
+	err := h.db.QueryRowContext(r.Context(), "SELECT password_hash FROM users WHERE id = ? AND organization_id = ?", user.ID, user.OrganizationID).Scan(&currentHash)
+	if err != nil {
+		log.Printf("[AUTH ERROR] Change password lookup failed: %v", err)
+		responses.InternalServerError(w, "Failed to load account credentials")
+		return
+	}
+
+	matched, err := h.hasher.VerifyPassword(req.CurrentPassword, currentHash)
+	if err != nil || !matched {
+		h.recorder.Record(r.Context(), domain.AuditLog{
+			OrganizationID:   user.OrganizationID,
+			ActorID:          user.EmployeeID,
+			ActorName:        user.Name,
+			ActorRole:        string(user.Role),
+			Action:           "password_change",
+			AffectedResource: "User Credentials",
+			ResourceID:       user.ID,
+			Details:          "Failed password change: current password incorrect.",
+			Outcome:          "failure",
+			IPAddress:        r.RemoteAddr,
+			UserAgent:        r.UserAgent(),
+		})
+		responses.BadRequest(w, "Current password is incorrect.", nil)
+		return
+	}
+
+	if req.NewPassword == req.CurrentPassword {
+		responses.BadRequest(w, "New password must be different from your current password.", nil)
+		return
+	}
+	if err := auth.ValidatePasswordStrength(req.NewPassword); err != nil {
+		responses.BadRequest(w, strings.ToUpper(err.Error()[:1])+err.Error()[1:]+".", nil)
+		return
+	}
+
+	newHash, err := h.hasher.HashPassword(req.NewPassword)
+	if err != nil {
+		responses.InternalServerError(w, "Password hashing failed")
+		return
+	}
+
+	now := time.Now().UTC()
+	tx, err := h.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		responses.InternalServerError(w, "Database transaction failed")
+		return
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(r.Context(),
+		"UPDATE users SET password_hash = ?, must_change_password = false, updated_at = ? WHERE id = ? AND organization_id = ?",
+		newHash, now, user.ID, user.OrganizationID); err != nil {
+		log.Printf("[AUTH ERROR] Password update failed: %v", err)
+		responses.InternalServerError(w, "Failed to update password")
+		return
+	}
+
+	sessionID, _ := r.Context().Value(middleware.SessionContextKey).(string)
+	if _, err := tx.ExecContext(r.Context(),
+		"UPDATE user_sessions SET revoked_at = ? WHERE user_id = ? AND id <> ? AND revoked_at IS NULL",
+		now, user.ID, sessionID); err != nil {
+		log.Printf("[AUTH ERROR] Session revocation failed: %v", err)
+		responses.InternalServerError(w, "Failed to revoke other sessions")
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		responses.InternalServerError(w, "Failed to commit password change")
+		return
+	}
+
+	h.recorder.Record(r.Context(), domain.AuditLog{
+		OrganizationID:   user.OrganizationID,
+		ActorID:          user.EmployeeID,
+		ActorName:        user.Name,
+		ActorRole:        string(user.Role),
+		Action:           "password_change",
+		AffectedResource: "User Credentials",
+		ResourceID:       user.ID,
+		Details:          "Password changed. Other active sessions revoked.",
+		Outcome:          "success",
+		IPAddress:        r.RemoteAddr,
+		UserAgent:        r.UserAgent(),
+	})
+
+	updated := *user
+	updated.MustChangePassword = false
+	responses.JSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Password updated successfully.",
+		"user":    updated,
 	})
 }

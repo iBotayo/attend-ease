@@ -200,17 +200,17 @@ func (h *EmployeeHandler) Create(w http.ResponseWriter, r *http.Request) {
 	nextCode := fmt.Sprintf("EMP-%d", 1000+count+1)
 
 	newID := "user-emp-" + uuid.New().String()
-	defaultPassword := "AttendEase2026!"
+	defaultPassword := auth.DefaultNewEmployeePassword
 	passwordHash, _ := h.hasher.HashPassword(defaultPassword)
 
 	now := time.Now().UTC()
 
 	insertQuery := `
 	INSERT INTO users (
-		id, organization_id, employee_id, name, email, password_hash, role,
+		id, organization_id, employee_id, name, email, password_hash, must_change_password, role,
 		department_id, assigned_facility_id, phone, is_active, biometric_status,
 		joined_date, created_at, updated_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, 'not_enrolled', ?, ?, ?)`
+	) VALUES (?, ?, ?, ?, ?, ?, true, ?, ?, ?, ?, true, 'not_enrolled', ?, ?, ?)`
 
 	var deptID, facID interface{}
 	if req.DepartmentID != "" {
@@ -385,4 +385,98 @@ func (h *EmployeeHandler) fetchAndRespondUser(w http.ResponseWriter, r *http.Req
 	u.JoinedDate = joinedDate.Format("2006-01-02")
 
 	responses.JSON(w, statusCode, u)
+}
+
+// ResetPassword issues a random temporary password for another user in the caller's
+// organization, flags the account to change it at next login, and signs it out everywhere.
+// The temporary password is returned once and never stored in plain text.
+func (h *EmployeeHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	actor := middleware.GetUserFromContext(r.Context())
+	if actor == nil {
+		responses.Unauthorized(w, "Authentication required.")
+		return
+	}
+
+	id := r.PathValue("id")
+	if id == "" {
+		responses.BadRequest(w, "Employee ID required", nil)
+		return
+	}
+	if id == actor.ID {
+		responses.BadRequest(w, "Use Change Password to update your own password.", nil)
+		return
+	}
+
+	var targetOrgID, targetName, targetCode string
+	var targetRole domain.UserRole
+	err := h.db.QueryRowContext(r.Context(),
+		"SELECT organization_id, name, employee_id, role FROM users WHERE id = ?", id).
+		Scan(&targetOrgID, &targetName, &targetCode, &targetRole)
+	if err != nil || (actor.Role != domain.RoleSystemAdmin && targetOrgID != actor.OrganizationID) {
+		responses.NotFound(w, "Employee not found in organization")
+		return
+	}
+
+	// Facility admins may reset staff, but not the organization's administrators.
+	if actor.Role == domain.RoleFacilityAdmin && (targetRole == domain.RoleOrgAdmin || targetRole == domain.RoleSystemAdmin) {
+		responses.Forbidden(w, "Only an organization administrator can reset this account.")
+		return
+	}
+
+	tempPassword, err := auth.GenerateTemporaryPassword()
+	if err != nil {
+		responses.InternalServerError(w, "Failed to generate temporary password")
+		return
+	}
+	hash, err := h.hasher.HashPassword(tempPassword)
+	if err != nil {
+		responses.InternalServerError(w, "Password hashing failed")
+		return
+	}
+
+	now := time.Now().UTC()
+	tx, err := h.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		responses.InternalServerError(w, "Database transaction failed")
+		return
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(r.Context(),
+		"UPDATE users SET password_hash = ?, must_change_password = true, updated_at = ? WHERE id = ?",
+		hash, now, id); err != nil {
+		log.Printf("[EMPLOYEE ERROR] Password reset failed: %v", err)
+		responses.InternalServerError(w, "Failed to reset password")
+		return
+	}
+	if _, err := tx.ExecContext(r.Context(),
+		"UPDATE user_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL", now, id); err != nil {
+		log.Printf("[EMPLOYEE ERROR] Session revocation failed: %v", err)
+		responses.InternalServerError(w, "Failed to revoke sessions")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		responses.InternalServerError(w, "Failed to commit password reset")
+		return
+	}
+
+	h.recorder.Record(r.Context(), domain.AuditLog{
+		OrganizationID:   targetOrgID,
+		ActorID:          actor.EmployeeID,
+		ActorName:        actor.Name,
+		ActorRole:        string(actor.Role),
+		Action:           "password_reset",
+		AffectedResource: fmt.Sprintf("Employee %s (%s)", targetName, targetCode),
+		ResourceID:       id,
+		Details:          "Administrator issued a temporary password. User must change it at next login; all sessions revoked.",
+		Outcome:          "success",
+		IPAddress:        r.RemoteAddr,
+		UserAgent:        r.UserAgent(),
+	})
+
+	responses.JSON(w, http.StatusOK, map[string]interface{}{
+		"success":           true,
+		"temporaryPassword": tempPassword,
+		"message":           fmt.Sprintf("Temporary password issued for %s. They must change it at next login.", targetName),
+	})
 }

@@ -271,7 +271,7 @@ export default function AdminAuditLogsPage() {
                       {l.details}
                     </td>
                     <td className="py-3 px-4 font-mono text-[11px] text-brand-muted">
-                      {l.ipAddress || '10.180.4.12'}
+                      {l.ipAddress || '—'}
                     </td>
                     <td className="py-3 px-4 text-right">
                       {getOutcomeBadge(l.outcome)}

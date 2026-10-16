@@ -102,6 +102,7 @@ type User struct {
 	BiometricStatus      BiometricEnrollmentStatus `json:"biometricStatus"`
 	EnrolledAt           *string                   `json:"enrolledAt,omitempty"`
 	JoinedDate           string                    `json:"joinedDate"`
+	MustChangePassword   bool                      `json:"mustChangePassword"`
 }
 
 type Department struct {
