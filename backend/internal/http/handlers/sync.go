@@ -16,12 +16,15 @@ import (
 )
 
 type SyncHandler struct {
-	db       *sql.DB
-	recorder *audit.Recorder
+	db               *sql.DB
+	recorder         *audit.Recorder
+	biometricEnabled bool
 }
 
-func NewSyncHandler(db *sql.DB, recorder *audit.Recorder) *SyncHandler {
-	return &SyncHandler{db: db, recorder: recorder}
+// NewSyncHandler builds the offline sync handler. biometricEnabled controls whether a low
+// face-match score rejects an event; it must stay false until a face service is deployed.
+func NewSyncHandler(db *sql.DB, recorder *audit.Recorder, biometricEnabled bool) *SyncHandler {
+	return &SyncHandler{db: db, recorder: recorder, biometricEnabled: biometricEnabled}
 }
 
 type SyncBatchRequest struct {
@@ -132,7 +135,8 @@ func (h *SyncHandler) OfflineBatch(w http.ResponseWriter, r *http.Request) {
 			dist = *event.VerificationResult.GpsDistanceMeters
 		}
 
-		if score < 0.70 && !event.VerificationResult.FaceMatch {
+		// Face scores only mean something when a matching service produced them.
+		if h.biometricEnabled && score < 0.70 && !event.VerificationResult.FaceMatch {
 			processedEvent.Status = string(domain.SyncRejected)
 			processedEvent.ErrorMessage = fmt.Sprintf("Biometric match score %.2f is below acceptable threshold during reconciliation.", score)
 			result.Failed++

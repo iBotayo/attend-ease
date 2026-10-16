@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { StatCard } from '@/components/StatCard';
 import { LoadingState } from '@/components/EmptyState';
 import { useOffline } from '@/context/OfflineContext';
+import { useAuth } from '@/context/AuthContext';
 import { syncService } from '@/services/sync.service';
 import { offlineDB } from '@/lib/offline/db';
 import { mockStore } from '@/mocks';
@@ -28,6 +29,7 @@ import {
 
 export default function AdminOfflineRecordsPage() {
   const { isEffectiveOffline, isSyncing, triggerSync, refreshPendingCount } = useOffline();
+  const { user, isMockMode } = useAuth();
   const [events, setEvents] = useState<OfflineEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'review_required' | 'rejected' | 'synced'>('all');
@@ -53,7 +55,7 @@ export default function AdminOfflineRecordsPage() {
     try {
       const res = await triggerSync();
       setFeedback(
-        `[Simulated Sync] Processed ${res.totalProcessed} records: ${res.successful} synced, ${res.reviewRequired} review-required, ${res.failed} rejected.`
+        `${isMockMode ? '[Simulated Sync] ' : ''}Processed ${res.totalProcessed} records: ${res.successful} synced, ${res.reviewRequired} review-required, ${res.failed} rejected.`
       );
       await loadData();
     } catch (err: unknown) {
@@ -105,9 +107,9 @@ export default function AdminOfflineRecordsPage() {
     mockStore.addAttendance(newRecord);
 
     mockStore.addAuditLog({
-      actorId: 'EMP-1004',
-      actorName: 'Marcus Vance',
-      actorRole: 'System Administrator',
+      actorId: user?.employeeId ?? 'unknown',
+      actorName: user?.name ?? 'Unknown',
+      actorRole: user?.role ?? 'admin',
       action: 'attendance_correction',
       affectedResource: `Offline Event #${event.id} (${event.employeeName})`,
       details: 'Supervisor accepted flagged offline record after perimeter verification review.',
@@ -126,9 +128,9 @@ export default function AdminOfflineRecordsPage() {
     });
 
     mockStore.addAuditLog({
-      actorId: 'EMP-1004',
-      actorName: 'Marcus Vance',
-      actorRole: 'System Administrator',
+      actorId: user?.employeeId ?? 'unknown',
+      actorName: user?.name ?? 'Unknown',
+      actorRole: user?.role ?? 'admin',
       action: 'attendance_correction',
       affectedResource: `Offline Event #${event.id} (${event.employeeName})`,
       details: 'Supervisor rejected flagged offline attendance event.',
@@ -164,6 +166,7 @@ export default function AdminOfflineRecordsPage() {
         subtitle="Inspect and reconcile offline-captured attendance batches stored in IndexedDB before accepting into permanent register"
         actions={
           <div className="flex items-center gap-2">
+            {isMockMode && (
             <button
               onClick={handleSeedDemo}
               className="px-3 py-2 bg-brand-ivory hover:bg-brand-border-subtle text-brand-charcoal rounded-xl text-xs font-semibold transition border border-brand-border flex items-center gap-1.5"
@@ -172,6 +175,7 @@ export default function AdminOfflineRecordsPage() {
               <Sparkles className="w-3.5 h-3.5 text-brand-secondary" />
               <span>Seed Test Records</span>
             </button>
+            )}
 
             <button
               onClick={handleSyncNow}
@@ -179,7 +183,7 @@ export default function AdminOfflineRecordsPage() {
               className="px-4 py-2 bg-brand-primary hover:bg-brand-primary-hover text-white rounded-xl text-xs font-bold transition shadow-card flex items-center gap-1.5 disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''} text-brand-mint`} />
-              <span>{isSyncing ? 'Synchronizing...' : 'Sync Pending (Demo)'}</span>
+              <span>{isSyncing ? 'Synchronizing...' : isMockMode ? 'Sync Pending (Demo)' : 'Sync Pending'}</span>
             </button>
           </div>
         }
@@ -321,7 +325,9 @@ export default function AdminOfflineRecordsPage() {
           <h3 className="font-bold text-sm text-brand-primary">No Matching Offline Records</h3>
           <p className="text-xs text-brand-muted max-w-sm mx-auto">
             {events.length === 0
-              ? 'The offline queue is currently empty. You can simulate offline arrivals using the Seed button or employee attendance portal.'
+              ? isMockMode
+                ? 'The offline queue is currently empty. You can simulate offline arrivals using the Seed button or employee attendance portal.'
+                : 'No offline check-ins are queued on this device.'
               : 'No records match the current filter criteria.'}
           </p>
         </div>
@@ -413,7 +419,13 @@ export default function AdminOfflineRecordsPage() {
                       Parameters
                     </button>
 
-                    {isReview && (
+                    {isReview && !isMockMode && (
+                      <span className="text-[11px] text-brand-muted max-w-[220px]">
+                        Saved on the server for review. Adjust it from the Attendance Register.
+                      </span>
+                    )}
+
+                    {isReview && isMockMode && (
                       <>
                         <button
                           onClick={() => handleApproveReview(evt)}
@@ -480,6 +492,7 @@ export default function AdminOfflineRecordsPage() {
                 </div>
               </div>
 
+              {isMockMode && (
               <div>
                 <span className="text-brand-muted font-bold text-[11px] block uppercase tracking-wider mb-1">
                   Offline Integrity Proof
@@ -492,8 +505,9 @@ export default function AdminOfflineRecordsPage() {
                   Replay Protection Nonce: {selectedEvent.id}
                 </p>
               </div>
+              )}
 
-              {selectedEvent.status === 'review_required' && (
+              {selectedEvent.status === 'review_required' && isMockMode && (
                 <div className="pt-2 flex items-center justify-end gap-2">
                   <button
                     onClick={() => handleRejectReview(selectedEvent)}

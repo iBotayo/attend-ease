@@ -81,7 +81,7 @@ export default function ForgotPasswordPage() {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. sarah.lin@attendease.internal"
+                    placeholder="e.g. you@company.com"
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
                     className="w-full pl-10 pr-3.5 py-2.5 text-xs rounded-xl border border-brand-border focus:border-brand-secondary outline-none transition bg-white"

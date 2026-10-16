@@ -79,8 +79,12 @@ export default function EmployeeDashboardPage() {
 
         {/* Biometric Status Pill */}
         <div className="flex items-center gap-2 self-start sm:self-auto bg-white px-3 py-1.5 rounded-2xl border border-brand-border-subtle shadow-subtle text-xs">
-          <ShieldCheck className="w-4 h-4 text-emerald-600" />
-          <span className="font-semibold text-brand-primary">Biometric Verified</span>
+          <ShieldCheck
+            className={`w-4 h-4 ${user?.biometricStatus === 'enrolled' ? 'text-emerald-600' : 'text-brand-muted'}`}
+          />
+          <span className="font-semibold text-brand-primary">
+            {user?.biometricStatus === 'enrolled' ? 'Face Enrolled' : 'Face Not Enrolled'}
+          </span>
           <span className="text-[10px] text-brand-muted">ID: {user?.employeeId}</span>
         </div>
       </div>
@@ -88,7 +92,7 @@ export default function EmployeeDashboardPage() {
       {/* Primary Attendance Action Card - Immediately visible */}
       <AttendanceActionCard
         summary={summary}
-        facilityName={user?.assignedFacilityName || 'Metropolitan Medical Center'}
+        facilityName={user?.assignedFacilityName || 'your assigned facility'}
         isOffline={isEffectiveOffline}
       />
 
@@ -104,10 +108,10 @@ export default function EmployeeDashboardPage() {
               Assigned Facility
             </span>
             <div className="font-bold text-brand-charcoal text-sm truncate max-w-[190px]">
-              {user?.assignedFacilityName.split(' - ')[0]}
+              {user?.assignedFacilityName ? user.assignedFacilityName.split(' - ')[0] : 'Not assigned'}
             </div>
             <p className="text-brand-muted text-[11px] mt-0.5">
-              Geofence and network verified
+              Location is checked at each check-in
             </p>
           </div>
         </div>

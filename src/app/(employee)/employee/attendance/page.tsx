@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 
 export default function AttendanceWorkflowPage() {
-  const { user } = useAuth();
+  const { user, isMockMode } = useAuth();
   const { isEffectiveOffline, refreshPendingCount } = useOffline();
 
   // Workflow steps: 1 = Confirm, 2 = Facility & Face Verification, 3 = Complete
@@ -100,7 +100,13 @@ export default function AttendanceWorkflowPage() {
         type: attendanceType,
         isOffline: isEffectiveOffline,
         verificationMode: isEffectiveOffline ? 'offline_sync' : 'face_facility',
-        verificationDetails: biometricResult,
+        // Record the real location check alongside the face result
+        verificationDetails: {
+          ...biometricResult,
+          facilityMatch: facilityVerification?.passed ?? false,
+          gpsDistanceMeters: facilityVerification?.distanceMeters,
+          networkMatch: facilityVerification?.networkMatch,
+        },
       });
 
       if (isEffectiveOffline) {
@@ -118,6 +124,15 @@ export default function AttendanceWorkflowPage() {
   };
 
   const canFinalize = biometricResult?.isVerified && facilityVerification?.passed;
+
+  // Tell the employee exactly which check is holding the Confirm button.
+  const blockingReason = !facilityVerification
+    ? 'Waiting for your location...'
+    : !facilityVerification.passed
+    ? `Location check failed. ${facilityVerification.details}`
+    : !biometricResult?.isVerified
+    ? 'Complete the face check above to continue.'
+    : null;
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -169,7 +184,8 @@ export default function AttendanceWorkflowPage() {
         </div>
       </div>
 
-      {/* Development Demo Outcome Simulation Controls */}
+      {/* Development Demo Outcome Simulation Controls (demo mode only) */}
+      {isMockMode && (
       <div className="bg-brand-primary/5 rounded-2xl p-4 border border-brand-primary/15 text-xs space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5 font-bold text-brand-primary">
@@ -253,6 +269,7 @@ export default function AttendanceWorkflowPage() {
           </button>
         </div>
       </div>
+      )}
 
       {/* STEP 1: Confirm Employee Account & Shift */}
       {step === 1 && (
@@ -376,7 +393,7 @@ export default function AttendanceWorkflowPage() {
           {/* Face Capture Panel */}
           <FaceCapturePanel
             employeeName={user?.name || 'Employee'}
-            employeeCode={user?.employeeId || 'EMP-1001'}
+            employeeCode={user?.employeeId || ''}
             isOffline={isEffectiveOffline}
             overrideSimulate={
               simulateOutcome === 'fail_biometric'
@@ -426,6 +443,11 @@ export default function AttendanceWorkflowPage() {
               </button>
             </div>
           </div>
+          {blockingReason && !isSubmitting && (
+            <p className="text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3">
+              {blockingReason}
+            </p>
+          )}
         </div>
       )}
 
@@ -444,7 +466,9 @@ export default function AttendanceWorkflowPage() {
               {submissionSuccess.type === 'check_in' ? 'Check-In Recorded' : 'Check-Out Recorded'}
             </h2>
             <p className="text-xs sm:text-sm text-brand-muted max-w-md mx-auto">
-              Your identity has been authenticated against facility policies.
+              {biometricResult?.faceMatch
+                ? 'Your identity has been authenticated against facility policies.'
+                : 'Your location was verified against facility policies.'}
             </p>
           </div>
 

@@ -14,6 +14,10 @@ import {
   Sparkles,
 } from 'lucide-react';
 
+// Testing only: lets check-ins pass the location check on devices without real GPS
+// (laptops locate by IP, often hundreds of km off). Never enable in production.
+const SKIP_GEOFENCE = process.env.NEXT_PUBLIC_SKIP_GEOFENCE === 'true';
+
 interface FacilityVerificationPanelProps {
   facility: Facility;
   onVerificationComplete: (result: {
@@ -61,6 +65,24 @@ export function FacilityVerificationPanel({
   const [statusMessage, setStatusMessage] = useState<string>('Verifying facility proximity...');
 
   const evaluatePresence = useCallback(() => {
+    // 0. Test switch: skip the location requirement entirely
+    if (SKIP_GEOFENCE) {
+      setGpsStatus('simulated');
+      setIsSimulated(true);
+      setDistance(0);
+      setNetworkMatched(true);
+      const details = 'Location check skipped: test mode is on (NEXT_PUBLIC_SKIP_GEOFENCE=true).';
+      setStatusMessage(details);
+      onVerificationComplete({
+        passed: true,
+        distanceMeters: 0,
+        networkMatch: true,
+        details,
+        isSimulated: true,
+      });
+      return;
+    }
+
     // 1. Explicit simulation overrides (useful for demo/testing states)
     if (simulateState === 'location_denied') {
       setGpsStatus('denied');
@@ -151,7 +173,7 @@ export function FacilityVerificationPanel({
           const passed = withinGeofence && netMatch;
           const details = passed
             ? `Real GPS: ${calculatedDist}m from ${facility.name} center (accuracy ±${Math.round(userAcc)}m, allowed radius ${facility.geofenceRadiusMeters}m).`
-            : `GPS outside boundary: ${calculatedDist}m exceeds permitted radius of ${facility.geofenceRadiusMeters}m.`;
+            : `GPS outside boundary: you are ${calculatedDist}m from ${facility.name}, but the allowed radius is ${facility.geofenceRadiusMeters}m (GPS accuracy ±${Math.round(userAcc)}m).`;
 
           setStatusMessage(details);
           onVerificationComplete({
@@ -310,6 +332,13 @@ export function FacilityVerificationPanel({
           </span>
         </div>
       </div>
+
+      {SKIP_GEOFENCE && (
+        <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-xs">
+          <strong className="font-semibold">Test mode:</strong> the location check is switched off, so check-ins
+          are accepted from anywhere. Set NEXT_PUBLIC_SKIP_GEOFENCE=false before real use.
+        </div>
+      )}
 
       {/* Geofence & Network status boxes */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-brand-border-subtle text-xs">

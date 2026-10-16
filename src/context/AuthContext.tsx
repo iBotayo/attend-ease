@@ -12,6 +12,7 @@ interface AuthContextType {
   login: (credentials: LoginCredentials) => Promise<User>;
   logout: () => Promise<void>;
   switchUser: (user: User) => void;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<User>;
   availableDemoUsers: User[];
 }
 
@@ -38,6 +39,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   };
 
+  const changePassword = async (currentPassword: string, newPassword: string): Promise<User> => {
+    const updated = await authService.changePassword(currentPassword, newPassword);
+    setUser(updated);
+    return updated;
+  };
+
   const switchUser = (newUser: User) => {
     if (!authService.isMockMode) return;
     authService.setCurrentUser(newUser);
@@ -56,6 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         logout,
         switchUser,
+        changePassword,
         availableDemoUsers,
       }}
     >

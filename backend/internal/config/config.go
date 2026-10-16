@@ -35,6 +35,9 @@ type Config struct {
 	Argon2KeyLen    uint32
 
 	// Biometrics & AI Service
+	// BiometricEnabled is false until a face-matching service is deployed. While false,
+	// face results are treated as demo data and never cause a check-in to be rejected.
+	BiometricEnabled    bool
 	BiometricServiceURL string
 	BiometricTimeout    time.Duration
 	FaceScoreThreshold  float64
@@ -74,6 +77,7 @@ func Load() (*Config, error) {
 		Argon2Threads: 2,         // 2 threads
 		Argon2KeyLen:  32,
 
+		BiometricEnabled:    getEnvAsBool("BIOMETRIC_ENABLED", false),
 		BiometricServiceURL: getEnv("BIOMETRIC_SERVICE_URL", "http://localhost:5001"),
 		BiometricTimeout:    time.Duration(getEnvAsInt("BIOMETRIC_TIMEOUT_SECONDS", 5)) * time.Second,
 		FaceScoreThreshold:  getEnvAsFloat("FACE_SCORE_THRESHOLD", 0.85),

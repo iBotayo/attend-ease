@@ -492,10 +492,10 @@ func (h *OrganizationHandler) Setup(w http.ResponseWriter, r *http.Request) {
 
 		for i, emp := range req.InitialEmployees {
 			empID := fmt.Sprintf("EMP-%d", 1001+i)
-			hash, _ := h.hasher.HashPassword("Welcome123!")
+			hash, _ := h.hasher.HashPassword(auth.DefaultSetupInvitePassword)
 			_, _ = tx.ExecContext(r.Context(), `
-				INSERT IGNORE INTO users (id, organization_id, employee_id, name, email, password_hash, role, department_id, assigned_facility_id, is_active, biometric_status, joined_date, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, true, 'not_enrolled', ?, ?, ?)`,
+				INSERT IGNORE INTO users (id, organization_id, employee_id, name, email, password_hash, must_change_password, role, department_id, assigned_facility_id, is_active, biometric_status, joined_date, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, true, ?, ?, ?, true, 'not_enrolled', ?, ?, ?)`,
 				"user-"+uuid.New().String(), orgID, empID, emp.Name, strings.ToLower(emp.Email), hash, emp.Role, deptID, facID, now.Format("2006-01-02"), now, now)
 		}
 	}

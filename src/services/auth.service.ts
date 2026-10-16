@@ -2,6 +2,7 @@ import { User } from '@/types/user';
 import { mockStore } from '@/mocks';
 import { apiClient } from '@/lib/api/client';
 import { API_ENDPOINTS } from '@/lib/api/endpoints';
+import { validatePasswordStrength } from '@/lib/utils/password';
 
 export interface LoginCredentials {
   identifier: string; // email or employeeId
@@ -149,6 +150,50 @@ class AuthService {
     if (typeof window !== 'undefined') {
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(user));
     }
+  }
+
+  /** Updates the stored user in whichever storage holds the session (remember-me uses localStorage). */
+  private persistUser(user: User): void {
+    if (typeof window === 'undefined') return;
+    const serialized = JSON.stringify(user);
+    if (localStorage.getItem(STORAGE_KEY)) localStorage.setItem(STORAGE_KEY, serialized);
+    if (sessionStorage.getItem(STORAGE_KEY) || !localStorage.getItem(STORAGE_KEY)) {
+      sessionStorage.setItem(STORAGE_KEY, serialized);
+    }
+  }
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<User> {
+    if (!currentPassword || !newPassword) {
+      throw new Error('Current password and new password are required.');
+    }
+    if (newPassword === currentPassword) {
+      throw new Error('New password must be different from your current password.');
+    }
+    const policyError = validatePasswordStrength(newPassword);
+    if (policyError) {
+      throw new Error(policyError);
+    }
+
+    const current = this.getCurrentUser();
+    if (!current) {
+      throw new Error('You must be signed in to change your password.');
+    }
+
+    if (!this.isMockMode) {
+      const res = await apiClient.post<{ user: User }>(API_ENDPOINTS.AUTH.CHANGE_PASSWORD, {
+        currentPassword,
+        newPassword,
+      });
+      const updated = { ...current, ...res.user, mustChangePassword: false };
+      this.persistUser(updated);
+      return updated;
+    }
+
+    // Mock mode keeps no passwords, so only the flag changes.
+    await new Promise((r) => setTimeout(r, 400));
+    const updated = { ...current, mustChangePassword: false };
+    this.persistUser(updated);
+    return updated;
   }
 
   async requestPasswordReset(identifier: string): Promise<{ success: boolean; message: string }> {

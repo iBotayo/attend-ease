@@ -17,6 +17,7 @@ import {
   LayoutDashboard,
   CalendarCheck,
   ChevronDown,
+  KeyRound,
 } from 'lucide-react';
 
 interface AppHeaderProps {
@@ -26,7 +27,8 @@ interface AppHeaderProps {
 }
 
 export function AppHeader({ onToggleSidebar, title, isEmployeeLayout = false }: AppHeaderProps) {
-  const { user, logout } = useAuth();
+  const { user, logout, isMockMode } = useAuth();
+  const isAdminRole = user?.role !== 'employee';
   const router = useRouter();
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
@@ -105,7 +107,9 @@ export function AppHeader({ onToggleSidebar, title, isEmployeeLayout = false }: 
                 aria-label="View notifications"
               >
                 <Bell className="w-5 h-5" />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-brand-secondary" />
+                {isMockMode && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-brand-secondary" />
+                )}
               </button>
 
               {notificationsOpen && (
@@ -116,8 +120,11 @@ export function AppHeader({ onToggleSidebar, title, isEmployeeLayout = false }: 
                       <span className="text-xs font-bold text-brand-primary uppercase tracking-wider">
                         Notifications
                       </span>
-                      <span className="text-[11px] text-brand-muted">2 unread</span>
+                      {isMockMode && <span className="text-[11px] text-brand-muted">2 unread</span>}
                     </div>
+                    {!isMockMode ? (
+                      <p className="px-4 py-6 text-center text-xs text-brand-muted">No notifications yet.</p>
+                    ) : (
                     <div className="divide-y divide-brand-border-subtle/50 text-xs">
                       <div className="p-3 hover:bg-brand-ivory transition">
                         <div className="font-semibold text-brand-primary">Attendance Confirmed</div>
@@ -134,6 +141,7 @@ export function AppHeader({ onToggleSidebar, title, isEmployeeLayout = false }: 
                         <span className="text-[10px] text-brand-muted/70 mt-1 block">1 hour ago</span>
                       </div>
                     </div>
+                    )}
                   </div>
                 </>
               )}
@@ -192,14 +200,16 @@ export function AppHeader({ onToggleSidebar, title, isEmployeeLayout = false }: 
                         <span>Employee Portal</span>
                       </Link>
 
-                      <Link
-                        href="/admin/dashboard"
-                        onClick={() => setIsProfileMenuOpen(false)}
-                        className="flex items-center gap-2.5 px-4 py-2 text-brand-charcoal hover:bg-brand-ivory transition"
-                      >
-                        <Shield className="w-4 h-4 text-brand-muted" />
-                        <span>Administrator Portal</span>
-                      </Link>
+                      {isAdminRole && (
+                        <Link
+                          href="/admin/dashboard"
+                          onClick={() => setIsProfileMenuOpen(false)}
+                          className="flex items-center gap-2.5 px-4 py-2 text-brand-charcoal hover:bg-brand-ivory transition"
+                        >
+                          <Shield className="w-4 h-4 text-brand-muted" />
+                          <span>Administrator Portal</span>
+                        </Link>
+                      )}
 
                       <Link
                         href="/employee/profile"
@@ -208,6 +218,15 @@ export function AppHeader({ onToggleSidebar, title, isEmployeeLayout = false }: 
                       >
                         <User className="w-4 h-4 text-brand-muted" />
                         <span>My Profile</span>
+                      </Link>
+
+                      <Link
+                        href="/change-password"
+                        onClick={() => setIsProfileMenuOpen(false)}
+                        className="flex items-center gap-2.5 px-4 py-2 text-brand-charcoal hover:bg-brand-ivory transition"
+                      >
+                        <KeyRound className="w-4 h-4 text-brand-muted" />
+                        <span>Change Password</span>
                       </Link>
                     </div>
 

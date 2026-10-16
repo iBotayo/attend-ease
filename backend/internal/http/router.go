@@ -25,7 +25,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, bio verification.BiometricVerifie
 	facH := handlers.NewFacilityHandler(db, recorder)
 	shiftH := handlers.NewShiftHandler(db, recorder)
 	attH := handlers.NewAttendanceHandler(db, recorder, bio)
-	syncH := handlers.NewSyncHandler(db, recorder)
+	syncH := handlers.NewSyncHandler(db, recorder, cfg.BiometricEnabled)
 	reportH := handlers.NewReportHandler(db)
 	devH := handlers.NewDeviceHandler(db, recorder)
 	auditH := handlers.NewAuditHandler(db, recorder)
@@ -45,6 +45,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, bio verification.BiometricVerifie
 	// Authenticated Auth Endpoints
 	mux.Handle("POST /api/v1/auth/logout", middleware.RequireAuth(http.HandlerFunc(authH.Logout)))
 	mux.Handle("GET /api/v1/auth/me", middleware.RequireAuth(http.HandlerFunc(authH.Me)))
+	mux.Handle("POST /api/v1/auth/change-password", limiter.Limit(middleware.RequireAuth(http.HandlerFunc(authH.ChangePassword))))
 
 	// Organizations
 	mux.HandleFunc("GET /api/v1/organizations/current", orgH.GetCurrent)
@@ -58,6 +59,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, bio verification.BiometricVerifie
 	mux.Handle("POST /api/v1/employees", middleware.RequireAuth(middleware.RequireRole(domain.RoleSystemAdmin, domain.RoleOrgAdmin, domain.RoleFacilityAdmin)(http.HandlerFunc(empH.Create))))
 	mux.Handle("PUT /api/v1/employees/{id}", middleware.RequireAuth(middleware.RequireRole(domain.RoleSystemAdmin, domain.RoleOrgAdmin, domain.RoleFacilityAdmin)(http.HandlerFunc(empH.Update))))
 	mux.Handle("POST /api/v1/employees/{id}/status", middleware.RequireAuth(middleware.RequireRole(domain.RoleSystemAdmin, domain.RoleOrgAdmin, domain.RoleFacilityAdmin)(http.HandlerFunc(empH.ToggleStatus))))
+	mux.Handle("POST /api/v1/employees/{id}/reset-password", middleware.RequireAuth(middleware.RequireRole(domain.RoleSystemAdmin, domain.RoleOrgAdmin, domain.RoleFacilityAdmin)(http.HandlerFunc(empH.ResetPassword))))
 	mux.HandleFunc("GET /api/v1/departments", empH.GetDepartments)
 
 	// Facilities

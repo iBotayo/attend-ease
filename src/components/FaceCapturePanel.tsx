@@ -3,6 +3,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Camera, RefreshCw, CheckCircle2, XCircle, AlertCircle, Sparkles, Shield } from 'lucide-react';
 import { VerificationResult } from '@/types/attendance';
+import { useAuth } from '@/context/AuthContext';
+import { buildDemoFaceResult } from '@/lib/attendance/demoFace';
 
 interface FaceCapturePanelProps {
   employeeName: string;
@@ -21,6 +23,7 @@ export function FaceCapturePanel({
   onReset,
   overrideSimulate = 'pass',
 }: FaceCapturePanelProps) {
+  const { isMockMode } = useAuth();
   const [cameraState, setCameraState] = useState<'idle' | 'requesting' | 'active' | 'denied' | 'unavailable'>('idle');
   const [captureProgress, setCaptureProgress] = useState<'idle' | 'capturing' | 'analyzing' | 'complete'>('idle');
   const [analysisStep, setAnalysisStep] = useState<string>('');
@@ -83,18 +86,22 @@ export function FaceCapturePanel({
 
   const handleCaptureAndVerify = async () => {
     setCaptureProgress('capturing');
-    setAnalysisStep('Aligning facial landmarks in capture frame...');
+    setAnalysisStep(isMockMode ? 'Aligning facial landmarks in capture frame...' : 'Capturing image...');
 
     await new Promise((r) => setTimeout(r, 600));
     setCaptureProgress('analyzing');
-    setAnalysisStep('Analyzing biometric confidence & illumination quality...');
+    setAnalysisStep(
+      isMockMode ? 'Analyzing biometric confidence & illumination quality...' : 'Recording face capture...'
+    );
 
-    await new Promise((r) => setTimeout(r, 700));
+    await new Promise((r) => setTimeout(r, isMockMode ? 700 : 300));
 
     // Determine result
     let verification: VerificationResult;
 
-    if (overrideSimulate === 'fail_biometric') {
+    if (!isMockMode) {
+      verification = buildDemoFaceResult(isOffline);
+    } else if (overrideSimulate === 'fail_biometric') {
       verification = {
         isVerified: false,
         score: 0.44,
@@ -187,12 +194,22 @@ export function FaceCapturePanel({
             <p className="text-xs text-white/70 max-w-xs">
               Browser camera access was blocked. Please enable camera permissions in your browser settings to proceed.
             </p>
-            <button
-              onClick={startCamera}
-              className="px-4 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-medium"
-            >
-              Retry Camera Permission
-            </button>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button
+                onClick={startCamera}
+                className="px-4 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-medium"
+              >
+                Retry Camera Permission
+              </button>
+              {!isMockMode && (
+                <button
+                  onClick={handleCaptureAndVerify}
+                  className="px-4 py-1.5 bg-brand-secondary text-white rounded-lg text-xs font-semibold"
+                >
+                  Continue Without Camera (Demo)
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -202,15 +219,31 @@ export function FaceCapturePanel({
               <Camera className="w-6 h-6" />
             </div>
             <p className="font-bold text-sm text-amber-200">Camera Device Unavailable</p>
-            <p className="text-xs text-white/70 max-w-xs">
-              No physical camera was detected on this device. You can simulate face capture in demo mode.
-            </p>
-            <button
-              onClick={handleCaptureAndVerify}
-              className="px-4 py-2 bg-brand-secondary text-white rounded-lg text-xs font-semibold"
-            >
-              Simulate Face Capture
-            </button>
+            {isMockMode ? (
+              <>
+                <p className="text-xs text-white/70 max-w-xs">
+                  No physical camera was detected on this device. You can simulate face capture in demo mode.
+                </p>
+                <button
+                  onClick={handleCaptureAndVerify}
+                  className="px-4 py-2 bg-brand-secondary text-white rounded-lg text-xs font-semibold"
+                >
+                  Simulate Face Capture
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-white/70 max-w-xs">
+                  No camera was detected on this device. Face matching is demo-only for now, so you can continue without it.
+                </p>
+                <button
+                  onClick={handleCaptureAndVerify}
+                  className="px-4 py-2 bg-brand-secondary text-white rounded-lg text-xs font-semibold"
+                >
+                  Continue Without Camera (Demo)
+                </button>
+              </>
+            )}
           </div>
         )}
 
@@ -254,11 +287,15 @@ export function FaceCapturePanel({
                 <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center mb-3">
                   <CheckCircle2 className="w-8 h-8" />
                 </div>
-                <h3 className="font-bold text-base text-emerald-300">Verification Successful</h3>
+                <h3 className="font-bold text-base text-emerald-300">
+                  {result.faceMatch ? 'Verification Successful' : 'Face Captured (Demo)'}
+                </h3>
                 <p className="text-xs text-white/80 mt-1 max-w-xs">{result.message}</p>
-                <div className="mt-3 px-3 py-1 rounded-full bg-emerald-900/50 border border-emerald-500/30 text-emerald-300 text-xs font-semibold">
-                  Match Score: {Math.round(result.score * 100)}%
-                </div>
+                {result.faceMatch && (
+                  <div className="mt-3 px-3 py-1 rounded-full bg-emerald-900/50 border border-emerald-500/30 text-emerald-300 text-xs font-semibold">
+                    Match Score: {Math.round(result.score * 100)}%
+                  </div>
+                )}
               </>
             ) : (
               <>
@@ -312,7 +349,15 @@ export function FaceCapturePanel({
       <div className="text-[11px] text-brand-muted bg-brand-ivory p-3 rounded-xl border border-brand-border-subtle flex items-start gap-2">
         <Sparkles className="w-4 h-4 text-brand-secondary shrink-0 mt-0.5" />
         <div>
-          <strong className="text-brand-charcoal font-semibold">Simulated Biometric Processing:</strong> Real facial recognition and liveness detection will be executed securely server-side in the Go backend. No raw images or biometric templates are stored in client storage.
+          {isMockMode ? (
+            <>
+              <strong className="text-brand-charcoal font-semibold">Simulated Biometric Processing:</strong> Real facial recognition and liveness detection will be executed securely server-side in the Go backend. No raw images or biometric templates are stored in client storage.
+            </>
+          ) : (
+            <>
+              <strong className="text-brand-charcoal font-semibold">Demo face check:</strong> Face matching is not connected yet, so any capture is accepted and your location check decides the check-in. The camera preview stays on this device and no image is uploaded or stored.
+            </>
+          )}
         </div>
       </div>
     </div>

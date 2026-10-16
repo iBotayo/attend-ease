@@ -6,8 +6,9 @@ import { PageHeader } from '@/components/PageHeader';
 import { StatCard } from '@/components/StatCard';
 import { AttendanceStatusBadge } from '@/components/AttendanceStatusBadge';
 import { SyncStatusBadge } from '@/components/SyncStatusBadge';
-import { mockStore } from '@/mocks';
+import { attendanceService, employeeService, facilityService } from '@/services';
 import { AttendanceRecord } from '@/types/attendance';
+import { User } from '@/types/user';
 import { useOffline } from '@/context/OfflineContext';
 import { formatDate, formatTime } from '@/lib/utils/formatters';
 import {
@@ -25,12 +26,28 @@ import {
 export default function AdminDashboardPage() {
   const { pendingCount } = useOffline();
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [employees, setEmployees] = useState<User[]>([]);
+  const [facilityCount, setFacilityCount] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    setRecords(mockStore.getAttendance());
+    // Services route to the Go API or the mock store depending on NEXT_PUBLIC_ENABLE_MOCK_API.
+    Promise.all([
+      attendanceService.getAllAttendance(),
+      employeeService.getEmployees(),
+      facilityService.getFacilities(),
+    ])
+      .then(([attendance, staff, facilities]) => {
+        setRecords(attendance);
+        setEmployees(staff);
+        setFacilityCount(facilities.length);
+      })
+      .catch((err: unknown) => {
+        setLoadError(err instanceof Error ? err.message : 'Failed to load dashboard data.');
+      });
   }, []);
 
-  const totalEmployees = mockStore.getUsers().length;
+  const totalEmployees = employees.length;
 
   // Today stats
   const today = new Date().toISOString().split('T')[0];
@@ -39,15 +56,25 @@ export default function AdminDashboardPage() {
   const presentToday = todayRecords.filter((r) => r.status === 'present').length;
   const lateToday = todayRecords.filter((r) => r.status === 'late').length;
   const absentToday = todayRecords.filter((r) => r.status === 'absent').length;
-  const exceptionsCount = records.filter((r) => r.syncStatus === 'review_required' || r.status === 'rejected').length;
+  const exceptions = records.filter((r) => r.syncStatus === 'review_required' || r.status === 'rejected');
+  const exceptionsCount = exceptions.length;
+  const activeRate = totalEmployees > 0 ? Math.round(((presentToday + lateToday) / totalEmployees) * 100) : 0;
 
-  // Trends by department
-  const deptStats = [
-    { name: 'Engineering & Technology', count: 6, present: 5, rate: 83 },
-    { name: 'Clinical Services', count: 5, present: 4, rate: 80 },
-    { name: 'Operations & Logistics', count: 4, present: 3, rate: 75 },
-    { name: 'Administration & HR', count: 3, present: 3, rate: 100 },
-  ];
+  // Today's on-site rate by department, derived from the employee directory and today's records
+  const onSiteToday = new Set(
+    todayRecords.filter((r) => r.status === 'present' || r.status === 'late').map((r) => r.employeeId)
+  );
+  const deptMap = new Map<string, { name: string; count: number; present: number }>();
+  for (const emp of employees) {
+    const name = emp.departmentName || 'Unassigned';
+    const entry = deptMap.get(name) ?? { name, count: 0, present: 0 };
+    entry.count += 1;
+    if (onSiteToday.has(emp.id)) entry.present += 1;
+    deptMap.set(name, entry);
+  }
+  const deptStats = Array.from(deptMap.values())
+    .map((d) => ({ ...d, rate: d.count > 0 ? Math.round((d.present / d.count) * 100) : 0 }))
+    .sort((a, b) => b.count - a.count);
 
   return (
     <div className="space-y-6">
@@ -65,13 +92,19 @@ export default function AdminDashboardPage() {
         }
       />
 
+      {loadError && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl px-4 py-3 text-xs font-semibold">
+          Could not load dashboard data: {loadError}
+        </div>
+      )}
+
       {/* KPI Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 sm:gap-4">
         <StatCard
           title="Total Staff"
           value={totalEmployees}
           icon={Users}
-          subtitle="Across 3 facilities"
+          subtitle={`Across ${facilityCount} ${facilityCount === 1 ? 'facility' : 'facilities'}`}
           variant="default"
         />
 
@@ -79,7 +112,7 @@ export default function AdminDashboardPage() {
           title="Present Today"
           value={presentToday}
           icon={UserCheck}
-          subtitle={`${Math.round(((presentToday + lateToday) / totalEmployees) * 100)}% active rate`}
+          subtitle={`${activeRate}% active rate`}
           variant="success"
         />
 
@@ -132,6 +165,9 @@ export default function AdminDashboardPage() {
           </div>
 
           <div className="space-y-4 pt-1">
+            {deptStats.length === 0 && (
+              <p className="text-xs text-brand-muted">No employees yet. Add staff to see department attendance.</p>
+            )}
             {deptStats.map((dept) => (
               <div key={dept.name} className="space-y-1.5">
                 <div className="flex justify-between text-xs">
@@ -186,25 +222,24 @@ export default function AdminDashboardPage() {
             </p>
 
             <div className="divide-y divide-brand-border-subtle/70 pt-2">
-              <div className="py-2.5 space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-brand-primary">Tariq O’Connor</span>
-                  <span className="text-[10px] text-brand-danger font-bold uppercase">Rejected</span>
+              {exceptions.length === 0 && (
+                <p className="py-2.5 text-[11px] text-brand-muted">No flagged attendance events.</p>
+              )}
+              {exceptions.slice(0, 3).map((r) => (
+                <div key={r.id} className="py-2.5 space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-brand-primary">{r.employeeName}</span>
+                    {r.status === 'rejected' ? (
+                      <span className="text-[10px] text-brand-danger font-bold uppercase">Rejected</span>
+                    ) : (
+                      <span className="text-[10px] text-indigo-700 font-bold uppercase">Review Needed</span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-brand-muted">
+                    {r.verificationDetails?.message || r.notes || `${r.facilityName} on ${formatDate(r.date)}`}
+                  </p>
                 </div>
-                <p className="text-[11px] text-brand-muted">
-                  Confidence score 0.58 & location 510m outside Westside facility geofence.
-                </p>
-              </div>
-
-              <div className="py-2.5 space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-brand-primary">Nadia Chen</span>
-                  <span className="text-[10px] text-indigo-700 font-bold uppercase">Review Needed</span>
-                </div>
-                <p className="text-[11px] text-brand-muted">
-                  Captured at geofence boundary (195m vs 200m limit). Needs supervisor sign-off.
-                </p>
-              </div>
+              ))}
             </div>
           </div>
 
@@ -250,6 +285,13 @@ export default function AdminDashboardPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-brand-border-subtle/70">
+              {records.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="py-6 px-4 text-center text-brand-muted">
+                    No attendance recorded yet.
+                  </td>
+                </tr>
+              )}
               {records.slice(0, 6).map((r) => (
                 <tr key={r.id} className="hover:bg-brand-ivory/50">
                   <td className="py-3 px-4 font-bold text-brand-primary">{r.employeeName}</td>

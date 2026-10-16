@@ -58,7 +58,7 @@ func Authenticate(db *sql.DB) func(http.Handler) http.Handler {
 			       u.role, COALESCE(u.department_id, ''), COALESCE(d.name, 'General Staff'),
 			       COALESCE(u.assigned_facility_id, ''), COALESCE(f.name, 'Default Facility'),
 			       COALESCE(u.avatar_url, ''), COALESCE(u.phone, ''), u.is_active,
-			       u.biometric_status, u.joined_date
+			       u.biometric_status, u.joined_date, u.must_change_password
 			FROM user_sessions s
 			JOIN users u ON s.user_id = u.id
 			LEFT JOIN organizations o ON u.organization_id = o.id
@@ -79,7 +79,7 @@ func Authenticate(db *sql.DB) func(http.Handler) http.Handler {
 				&u.Role, &u.DepartmentID, &u.DepartmentName,
 				&u.AssignedFacilityID, &u.AssignedFacilityName,
 				&u.AvatarURL, &u.Phone, &u.IsActive,
-				&u.BiometricStatus, &joinedDate,
+				&u.BiometricStatus, &joinedDate, &u.MustChangePassword,
 			)
 
 			if err == nil {
@@ -108,8 +108,21 @@ func RequireAuth(next http.Handler) http.Handler {
 			return
 		}
 
+		if user.MustChangePassword && !passwordChangeAllowedPaths[r.URL.Path] {
+			responses.Error(w, http.StatusForbidden, "PASSWORD_CHANGE_REQUIRED", "You must change your temporary password before continuing.", nil)
+			return
+		}
+
 		next.ServeHTTP(w, r)
 	})
+}
+
+// passwordChangeAllowedPaths are the only authenticated routes a user flagged with
+// must_change_password may call until they set their own password.
+var passwordChangeAllowedPaths = map[string]bool{
+	"/api/v1/auth/change-password": true,
+	"/api/v1/auth/me":              true,
+	"/api/v1/auth/logout":          true,
 }
 
 func RequireRole(allowedRoles ...domain.UserRole) func(http.Handler) http.Handler {

@@ -39,8 +39,10 @@ export default function LoginPage() {
         rememberMe,
       });
 
-      // Role-based redirection based on verified account role
-      if (
+      // Accounts created with a shared temporary password must set their own first
+      if (authenticatedUser.mustChangePassword) {
+        router.push('/change-password');
+      } else if (
         authenticatedUser.role === 'org_admin' ||
         authenticatedUser.role === 'system_admin' ||
         authenticatedUser.role === 'facility_admin'
@@ -97,7 +99,7 @@ export default function LoginPage() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. EMP-1001 or sarah.lin@attendease.internal"
+                  placeholder="e.g. EMP-1001 or you@company.com"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   className="w-full pl-10 pr-3.5 py-2.5 text-xs rounded-xl border border-brand-border focus:border-brand-secondary focus:ring-1 focus:ring-brand-secondary outline-none transition bg-white"

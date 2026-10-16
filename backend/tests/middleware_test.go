@@ -168,3 +168,33 @@ func TestRecoveryMiddleware_PanicReturns500(t *testing.T) {
 		t.Errorf("Expected status 500 after panic, got %d", rec.Code)
 	}
 }
+
+func TestRequireAuth_MustChangePasswordBlocksOtherRoutes(t *testing.T) {
+	flagged := newUser(domain.RoleEmployee, "org-a", true)
+	flagged.MustChangePassword = true
+
+	cases := []struct {
+		path       string
+		wantStatus int
+	}{
+		{"/api/v1/employees", http.StatusForbidden},
+		{"/api/v1/auth/change-password", http.StatusOK},
+		{"/api/v1/auth/me", http.StatusOK},
+		{"/api/v1/auth/logout", http.StatusOK},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			req := withUser(httptest.NewRequest(http.MethodGet, tc.path, nil), flagged)
+			rec := httptest.NewRecorder()
+
+			middleware.RequireAuth(okHandler).ServeHTTP(rec, req)
+
+			if tc.wantStatus == http.StatusForbidden {
+				assertErrorCode(t, rec, http.StatusForbidden, "PASSWORD_CHANGE_REQUIRED")
+			} else if rec.Code != tc.wantStatus {
+				t.Errorf("Expected %d, got %d", tc.wantStatus, rec.Code)
+			}
+		})
+	}
+}
